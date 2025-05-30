@@ -1,0 +1,7 @@
+[project]
+name = "intel-vest-advisor"
+version = "0.1.0"
+description = "A new agentic AI project with ADK for providing personalized advice on investment based on user profile"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
