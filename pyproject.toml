@@ -5,6 +5,10 @@ description = "A new agentic AI project with ADK for providing personalized advi
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "google-adk>=1.1.1",
+    "google-cloud-bigquery>=3.34.0",
     "ipykernel>=6.29.5",
     "pandas>=2.2.3",
+    "pyarrow>=20.0.0",
+    "python-dotenv>=1.1.0",
 ]

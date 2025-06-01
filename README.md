@@ -50,30 +50,42 @@ graph TD
 ```
 intellivest/
 │
-├── agents/                    # ADK agents: Profiling, RiskClassifier, Advisory
+├── agents/                              # ADK agents (each in its own file/module)
 │   ├── profiling_agent.py
 │   ├── risk_classifier_agent.py
-│   └── advisory_agent.py
+│   ├── advisory_agent.py
+│   └── model_management/               # New directory for modular ModelManagementAgent
+│       ├── agent.py                    # Main logic for model management
+│       ├── utils.py                    # Helper functions (load data, run SQL, etc.)
+│       └── sql/                        # Model SQL scripts
+│           ├── create_dataset.sql
+│           ├── upload_data.sql         # Optional, if loading via SQL
+│           ├── train_model_logistic.sql
+│           ├── train_model_dnn.sql
+│           ├── train_model_boosted.sql
+│           ├── evaluate_model.sql
+│           └── select_best_model.sql   # Optional: auto-select best model
 │
-├── workflows/                 # Multi-agent workflows
+├── workflows/                          # Agent workflows
 │   └── investment_flow.yaml
 │
-├── data/                      # Raw and processed datasets
-│   └── bank-additional-full.csv
+├── data/                               # Local data
+│   ├── bank-additional-full.csv
+│   └── finra_cleaned.parquet           # Cleaned dataset for training
 │
-├── scripts/                   # One-time setup scripts
-│   ├── create_bigquery_tables.py
-│   └── train_bigquery_model.sql
+├── scripts/                            # One-time or orchestration scripts
+│   └── initialize_bigquery.py          # Migrate earlier setup here
 │
-├── notebooks/                 # Exploration and model performance
+├── notebooks/                          # Exploration and dev experiments
 │   └── data_analysis.ipynb
 │
-├── .adk/                      # ADK configuration and metadata
+├── .adk/                               # ADK configuration
 │   └── config.yaml
 │
-├── Dockerfile                 # For deployment on Cloud Run
+├── Dockerfile
 ├── requirements.txt
 └── README.md
+
 ```
 
 ---

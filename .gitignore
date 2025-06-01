@@ -5,3 +5,6 @@ __pycache__/
 *.log
 .ipynb_checkpoints/
 
+src/secrets/
+secrets/model_management_sa.json
+secrets/risk_assessment_sa.json
