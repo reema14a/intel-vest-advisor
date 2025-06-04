@@ -1,5 +1,5 @@
 SELECT
-    '{model_name}' AS model_name,
+    SUBSTR('{model_name}', 7) AS model_name,
     roc_auc,
     log_loss,
     precision,

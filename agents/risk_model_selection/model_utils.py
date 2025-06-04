@@ -1,28 +1,18 @@
-from agents.model_management.utils import execute_sql_file, upload_parquet_to_bigquery
-from dotenv import load_dotenv
-import os
+from agents.risk_model_selection.utils import (
+    execute_sql_file,
+    upload_parquet_to_bigquery,
+)
 
 
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
-
-
-class ModelManagementAgent:
-    """An agent responsible for:
-
-    1. Creating the BigQuery dataset if it doesn’t exist.
-    2. Uploading cleaned training data (from Parquet).
-    3. Evaluating multiple model types (`LOGISTIC_REG`, `BOOSTED_TREE_CLASSIFIER`, `DNN_CLASSIFIER`, etc.).
-    4. Selecting the best model based on evaluation metrics.
-    5. Training and storing the final model for use by other agents."""
-
-    def __init__(self, project_id, dataset_id, data_path, table_name):
+class ModelTrainer:
+    def __init__(self, project_id, dataset_id, table_name, data_path, sql_base):
         self.project_id = project_id
         self.dataset_id = dataset_id
-        self.data_path = data_path
         self.table_name = table_name
-        self.sql_base = "agents/model_management/sql/"
+        self.data_path = data_path
+        self.sql_base = sql_base
 
-    def setup(self):
+    def create_dataset(self):
         execute_sql_file(
             f"{self.sql_base}/create_dataset.sql",
             {"project_id": self.project_id, "dataset_id": self.dataset_id},
@@ -36,6 +26,10 @@ class ModelManagementAgent:
             table_name=self.table_name,
             parquet_path=self.data_path,
         )
+
+    def setup(self):
+        self.create_dataset()
+        self.upload_data()
 
     def train_models(self):
         for model in ["logistic_reg", "boosted_tree_classifier", "dnn_classifier"]:
@@ -56,7 +50,9 @@ class ModelManagementAgent:
             )
             print(f"Finished training model: {model}")
 
-    def evaluate_models(self):
+    def evaluate_all_models(self):
+        evaluations = []
+
         for model in ["logistic_reg", "boosted_tree_classifier", "dnn_classifier"]:
             result = execute_sql_file(
                 f"{self.sql_base}/evaluate_model.sql",
@@ -67,21 +63,18 @@ class ModelManagementAgent:
                 },
                 self.project_id,
             )
-            print(f"Evaluation for {model}:", list(result))
 
-    def run(self):
+            result_list = list(result)
+            print(f"Evaluation for {model}:", result_list)
+
+            evaluations.extend(result_list)
+
+        if result is None:
+            return None
+
+        print("All evaluations:", evaluations)
+        return evaluations
+
+    def train_all_models(self):
         self.setup()
-        self.upload_data()
         self.train_models()
-        self.evaluate_models()
-
-
-if __name__ == "__main__":
-    # print(os.getenv("GCP_PROJECT_ID"))
-    agent = ModelManagementAgent(
-        project_id=os.getenv("GCP_PROJECT_ID"),
-        dataset_id=os.getenv("BQ_DATASET"),
-        data_path=os.getenv("DATA_PATH"),
-        table_name=os.getenv("BQ_TABLE"),
-    )
-    agent.run()
