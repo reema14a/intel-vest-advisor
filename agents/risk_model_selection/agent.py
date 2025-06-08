@@ -2,12 +2,12 @@ from google.adk.agents import LlmAgent
 from google.adk.agents.callback_context import CallbackContext
 from google.genai import types
 
-from pydantic import BaseModel, Field, ValidationError, PrivateAttr
+from pydantic import BaseModel, Field, PrivateAttr
 from typing import List, Optional
 import json
 import os
 
-from agents.risk_model_selection.model_utils import ModelTrainer
+from agents.shared.model_utils import ModelTrainer
 from utils.load_env import load_agent_env
 
 
@@ -49,13 +49,13 @@ def before_agent_callback(callback_context: CallbackContext):
     # Create trainer functions and inject
     def setup_tool():
         """Set up BigQuery dataset and train models."""
-        trainer = ModelTrainer(project_id, dataset_id, table_name, data_path, sql_base)
+        trainer = ModelTrainer(project_id, dataset_id, sql_base, table_name, data_path)
         trainer.train_all_models()
         return "Setup and model training completed."
 
     def evaluate_tool():
         """Evaluate trained models and return metrics."""
-        trainer = ModelTrainer(project_id, dataset_id, table_name, data_path, sql_base)
+        trainer = ModelTrainer(project_id, dataset_id, sql_base, table_name, data_path)
         evaluations = trainer.evaluate_all_models()
 
         if not evaluations:

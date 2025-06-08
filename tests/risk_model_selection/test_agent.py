@@ -1,5 +1,5 @@
 import pytest
-import os
+
 from google.adk.sessions import InMemorySessionService
 from google.adk.runners import Runner
 
@@ -7,7 +7,6 @@ from agents.risk_model_selection.agent import (
     RiskModelSelectionAgent,
     ModelSelectionOutput,
 )
-from utils.load_env import load_agent_env
 
 
 @pytest.mark.asyncio

@@ -1,4 +1,4 @@
-from agents.risk_model_selection.model_utils import ModelTrainer
+from agents.shared.model_utils import ModelTrainer
 from utils.load_env import load_agent_env
 
 import os
