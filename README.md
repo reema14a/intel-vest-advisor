@@ -33,6 +33,50 @@ This project introduces a **multi-agent solution** using ADK, integrated with **
 
 ## 🏗️ Architecture
 
+### Agent Types Following ADK Best Practices
+
+Based on [ADK Agent Guidelines](https://google.github.io/adk-docs/agents/#choosing-the-right-agent-type):
+
+#### Custom Agents
+
+- **OrchestrationAgent** (`BaseAgent` with custom `_run_async_impl()`): Orchestrates the investment advisory process through specialized orchestration logic
+  - **Primary Function**: Implementing unique logic and integrations
+  - **Core Engine**: Custom code with conditional flow control
+  - **Determinism**: Can be either, based on implementation (deterministic sequential flow in our case)
+  - **Use Case**: Tailored requirements, specific workflows beyond standard patterns
+
+#### LLM Agents
+
+- **RiskAssessmentAgent** (`LlmAgent`): Analyzes user financial data to determine risk profile
+
+  - **Primary Function**: Reasoning and risk analysis
+  - **Core Engine**: Large Language Model (Gemini)
+  - **Determinism**: Non-deterministic (flexible reasoning)
+
+- **RiskModelSelectionAgent** (`LlmAgent`): Selects appropriate investment models based on risk profile
+  - **Primary Function**: Model selection reasoning
+  - **Core Engine**: Large Language Model (Gemini)
+  - **Determinism**: Non-deterministic (flexible decision making)
+
+### Custom Agent Architecture
+
+Following [ADK Custom Agent pattern](https://google.github.io/adk-docs/agents/custom-agents/#part-2-defining-the-custom-execution-logic):
+
+```
+OrchestrationAgent (Custom Agent)
+├── _run_async_impl() method with:
+│   ├── Step 1: async for event in risk_assessment_agent.run_async(ctx)
+│   ├── Step 2: async for event in risk_model_selection_agent.run_async(ctx)
+│   └── Step 3: Generate Final Recommendations
+└── Sub-agents initialized before super().__init__()
+```
+
+This follows ADK's recommended pattern where:
+
+- **Custom Agents** provide ultimate flexibility for specialized orchestration logic
+- **LLM Agents** handle intelligent, language-based task execution
+- **Event streaming** ensures proper communication between agents
+
 ```mermaid
 graph TD
   A[User Request] -->|via CLI/API| B[Agent Engine (ADK)]

@@ -8,3 +8,5 @@ __pycache__/
 src/secrets/
 secrets/model_management_sa.json
 secrets/risk_assessment_sa.json
+.env.dev
+.env.prd

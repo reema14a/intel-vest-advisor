@@ -1,14 +1,20 @@
+import logging
 from google.adk.agents import LlmAgent
+from google.adk.events import Event
 from google.adk.agents.callback_context import CallbackContext
 from google.genai import types
 
 from pydantic import BaseModel, Field, PrivateAttr
-from typing import List, Optional
+from typing import List, Optional, AsyncGenerator
 import json
 import os
 
 from agents.shared.model_utils import ModelTrainer
 from utils.load_env import load_agent_env
+from utils.monitoring import monitoring
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 
 class ModelMetric(BaseModel):
@@ -29,11 +35,13 @@ class ModelSelectionOutput(BaseModel):
 
 def before_agent_callback(callback_context: CallbackContext):
     """Dynamically load environment and inject tools"""
+    logger.info("Starting before_agent_callback for risk model selection")
 
     agent = callback_context._invocation_context.agent
 
     # Load .env for the risk_model_selection agent
     load_agent_env(__file__, "risk_model_selection")
+    logger.debug("Environment variables loaded for risk model selection agent")
 
     # Validate and extract
     project_id = os.getenv("GCP_PROJECT_ID")
@@ -66,42 +74,77 @@ def before_agent_callback(callback_context: CallbackContext):
             f"Precision={row['precision']:.3f}, Accuracy={row['accuracy']:.3f}"
             for row in evaluations
         )
-        print("✅ Evaluation metrics prepared.")
+        logger.debug("✅ Evaluation metrics prepared.")
         return evals_str
 
     agent.tools = [setup_tool, evaluate_tool]
 
 
 def after_agent_callback(callback_context: CallbackContext) -> Optional[types.Content]:
-    # agent = callback_context._invocation_context.agent
-    raw_output = callback_context.state.get("selected_model")
+    # Get the selected model output from session state, not local callback context state
+    session_state = callback_context._invocation_context.session.state
+    
+    # Try multiple sources for the raw output
+    raw_output = (
+        session_state.get("model_selection_raw_output") or
+        session_state.get("risk_model_selection_agent_output") or
+        ""
+    )
+
+    # If we still don't have raw output, try to get it from the agent's last response
+    if not raw_output:
+        # Check if there's a recent response we can extract JSON from
+        logger.warning("⚠️ No raw output found in session state, checking recent responses...")
+        
+        # The LLM response should be in the session state somewhere
+        for key, value in session_state.items():
+            if isinstance(value, str) and "selectedModel" in value and "```json" in value:
+                raw_output = value
+                logger.debug(f"📦 Found JSON in session state key: {key}")
+                break
 
     if not raw_output:
-        print("⚠️ No selected_model found in session state.")
+        logger.warning("⚠️ No JSON output found anywhere in session state.")
+        logger.debug(f"Session state keys: {list(session_state.keys())}")
         return None
 
-    print(f"📦 Raw selected_model content:\n{raw_output}")
+    logger.debug(f"📦 Raw selected_model content:\n{raw_output}")
 
-    # Strip markdown formatting (```json ... ```)
-    cleaned = raw_output.strip()
-    if cleaned.startswith("```json"):
-        cleaned = cleaned.removeprefix("```json").strip()
-    if cleaned.endswith("```"):
-        cleaned = cleaned.removesuffix("```").strip()
+    # Extract JSON from the response text
+    json_start = raw_output.find("```json")
+    json_end = raw_output.find("```", json_start + 7)
+    
+    if json_start != -1 and json_end != -1:
+        # Extract the JSON part
+        json_text = raw_output[json_start + 7:json_end].strip()
+    else:
+        # Try to find JSON without markdown formatting
+        json_start = raw_output.find("{")
+        json_end = raw_output.rfind("}") + 1
+        if json_start != -1 and json_end > json_start:
+            json_text = raw_output[json_start:json_end]
+        else:
+            logger.error("❌ Could not find JSON in the output")
+            return None
 
     try:
-        parsed = json.loads(cleaned)
+        parsed = json.loads(json_text)
         validated = ModelSelectionOutput(**parsed)
 
         # ✅ Log structured result
-        print("✅ Structured ModelSelectionOutput:")
-        print(validated.model_dump_json(indent=2))
+        logger.debug("✅ Structured ModelSelectionOutput:")
+        logger.debug(validated.model_dump_json(indent=2))
 
-        # ✅ Save to state (for downstream agents)
-        callback_context.state["validated_result"] = validated.model_dump()
+        # ✅ Save to session state (for downstream agents)
+        # Store both the full result and just the selected model name for easy access
+        session_state["validated_result"] = validated.model_dump()
+        session_state["selected_model"] = validated.selectedModel
+        
+        logger.info(f"✅ Successfully saved selected_model: {validated.selectedModel}")
 
     except Exception as e:
-        print(f"❌ Error parsing selected model output: {e}")
+        logger.error(f"❌ Error parsing selected model output: {e}")
+        logger.error(f"JSON text that failed to parse: {json_text}")
 
     return None  # Do not replace model output
 
@@ -109,7 +152,7 @@ def after_agent_callback(callback_context: CallbackContext) -> Optional[types.Co
 class RiskModelSelectionAgent(LlmAgent):
     """An agent responsible for:
 
-    1. Creating the BigQuery dataset if it doesn’t exist.
+    1. Creating the BigQuery dataset if it doesn't exist.
     2. Uploading cleaned training data (from Parquet).
     3. Evaluating multiple model types (`LOGISTIC_REG`, `BOOSTED_TREE_CLASSIFIER`, `DNN_CLASSIFIER`, etc.).
     4. Selecting the best model based on evaluation metrics.
@@ -150,50 +193,42 @@ class RiskModelSelectionAgent(LlmAgent):
 
     def __init__(self):
         # === Define local-wrapped tool functions ===
-
         super().__init__(
             model=os.getenv("MODEL_NAME", "gemini-2.0-flash"),
             name="risk_model_selection_agent",
             description="Selects the best BigQuery ML model based on evaluation metrics.",
             instruction=self._get_instruction(),
-            output_key="selected_model",
+            output_key="model_selection_raw_output",  # Use different key to avoid conflicts
             before_agent_callback=before_agent_callback,
             after_agent_callback=after_agent_callback,
             tools=[],  # tools added dynamically in before_agent_callback
         )
 
-    async def run_with_runner(
-        self,
-        runner,
-        user_id: str,
-        session_id: str,
-    ):
-        print("🤖 Running Gemini model selection...")
-
-        final_response = None
-
-        user_message = types.Content(
-            role="user",
-            parts=[types.Part(text="Please evaluate models and select the best one.")],
+    async def run_async(self, ctx: CallbackContext) -> AsyncGenerator[Event, None]:
+        """Run the model selection workflow asynchronously."""
+        # Just run the parent's run_async, don't inject a synthetic message
+        async for event in super().run_async(ctx):
+            if hasattr(event, "is_final_response") and event.is_final_response():
+                print(f"✅ Model Selection Complete:\n{event.content.parts[0].text.strip()}")
+            yield event
+            
+        # After model selection completes, create a final message event
+        selected_model = ctx.session.state.get("selected_model")
+        if not selected_model:
+            yield Event(
+                author="risk_model_selection_agent",
+                content=types.Content(
+                    role="assistant",
+                    parts=[types.Part(text="Error: No model was selected")]
+                )
+            )
+            return
+            
+        # Create final message with selected model
+        yield Event(
+            author="risk_model_selection_agent",
+            content=types.Content(
+                role="assistant",
+                parts=[types.Part(text=f"Selected model: {selected_model}")]
+            )
         )
-
-        async for event in runner.run_async(
-            user_id=user_id, session_id=session_id, new_message=user_message
-        ):
-            pass
-
-        # Save to session state for callback access
-        session = await runner.session_service.get_session(
-            app_name=runner.app_name, user_id=user_id, session_id=session_id
-        )
-
-        # The callback should have parsed and saved structured result
-        validated_result = session.state.get("validated_result")
-
-        if not validated_result:
-            raise RuntimeError("❌ No validated_result found in session state")
-
-        result = ModelSelectionOutput(**validated_result)
-        print(f"✅ Final response captured: {result}")
-
-        return result.selectedModel

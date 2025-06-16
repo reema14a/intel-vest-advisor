@@ -5,15 +5,27 @@ description = "A new agentic AI project with ADK for providing personalized advi
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "argparse>=1.4.0",
     "google-adk>=1.1.1",
     "google-cloud-bigquery>=3.34.0",
+    "google-cloud-logging>=3.12.1",
+    "google-cloud-monitoring>=2.27.1",
+    "google-cloud-trace>=1.16.1",
     "gradio>=5.33.0",
     "ipykernel>=6.29.5",
+    # OpenTelemetry - Essential for tracing
+    "opentelemetry-api>=1.33.1",
+    "opentelemetry-sdk>=1.33.1",
+    "opentelemetry-exporter-otlp>=1.33.1",
+    # Optional: only if you want to trace HTTP requests
+    "opentelemetry-instrumentation-requests>=0.54b1",
     "pandas>=2.2.3",
     "pyarrow>=20.0.0",
     "pytest>=8.3.5",
     "pytest-asyncio>=1.0.0",
     "python-dotenv>=1.1.0",
+    "python-json-logger>=3.3.0",
+    "sqlalchemy>=2.0.41",
 ]
 
 
